@@ -11,7 +11,7 @@
 #else
     /* Assume that any non-Windows platform uses POSIX-style sockets instead. */
     #include <sys/socket.h>
-    #include <arpa/inet.h>
+    //#include <arpa/inet.h>
     #include <netdb.h>  /* Needed for getaddrinfo() and freeaddrinfo() */
     #include <netinet/in.h>
     #include <pthread.h>
@@ -20,7 +20,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+//#include <unistd.h>
 #include <sys/types.h>
 #include <errno.h>
 #include <string.h>
@@ -169,7 +169,7 @@ void
 
 // the dispatcher handles incoming connections and creates worker threads for each one
 void
-*dispatcherThread(void *thread_arg) {
+*dispatcherThread() {
 
     printf("Dispatcher started\nWaiting for connections...\n");
     
