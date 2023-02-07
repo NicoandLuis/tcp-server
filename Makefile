@@ -6,7 +6,7 @@ OBJECTS=$(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(wildcard $(SRC_DIR)/*.c))\
 HEADERS=$(shell find $(SRC_DIR) -name "*.h")
 
 # Compiler settings
-CC=clang
+CC=cc
 CFLAGS=-g -Wall -fsanitize=address
 LDFLAGS=-lpthread -g -Wall -fsanitize=address
 
