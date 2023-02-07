@@ -1,26 +1,83 @@
-#define _GNU_SOURCE
+#ifdef _WIN32
+    /* See http://stackoverflow.com/questions/12765743/getaddrinfo-on-win32 */
+    #ifndef _WIN32_WINNT
+        #define _WIN32_WINNT 0x0501  /* Windows XP. */
+    #endif
+    #include <winsock2.h>
+    #include <Ws2tcpip.h>
+    #include <tchar.h>
+    #include <windows.h>
+    #include <pthread.h>
+#else
+    /* Assume that any non-Windows platform uses POSIX-style sockets instead. */
+    #include <sys/socket.h>
+    #include <arpa/inet.h>
+    #include <netdb.h>  /* Needed for getaddrinfo() and freeaddrinfo() */
+    #include <netinet/in.h>
+    #include <pthread.h>
+#endif
+
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <errno.h>
 #include <string.h>
-#include <pthread.h>
 
 
 int errnum, len;
 int balance = 0;
 socklen_t socklen = sizeof(struct sockaddr_in);
 int sockfd, new_sock;
-// Structs für Ziel und unsere eigene Adresse
+// address structs
 struct sockaddr_in addr, client_addr;
-pthread_t tid[1], dispatch;
+
+struct thread_info {    /* Used as argument to thread_start() */
+    int                 thread_num;       /* Application-defined thread # */
+    int                 sockfd;
+    struct sockaddr_in  client_addr;      
+};
+
+pthread_t tid[10], dispatch;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+
+
+// int sockInit(void)
+// {
+//     #ifdef _WIN32
+//         WSADATA wsa_data;
+//         return WSAStartup(MAKEWORD(2,2), &wsa_data);
+//     #else
+//         return 0;
+//     #endif
+// }
+
+// int sockQuit(void)
+// {
+//     #ifdef _WIN32
+//         return WSACleanup();
+//     #else
+//         return 0;
+//     #endif
+// }
+
+
+// int
+// sockClose(SOCKET sock) {
+
+//     int status = 0;
+
+//     #ifdef _WIN32
+//         status = shutdown(sock, SD_BOTH);
+//         if (status == 0) { status = closesocket(sock); }
+//     #else
+//         status = shutdown(sock, SHUT_RDWR);
+//         if (status == 0) { status = close(sock); }
+//     #endif
+
+//     return status;
+// }
 
 
 void
@@ -30,13 +87,11 @@ handle_error_en(int en, char *msg) {
     exit(EXIT_FAILURE);
 }
 
-
-struct thread_info {    /* Used as argument to thread_start() */
-    int                 thread_num;       /* Application-defined thread # */
-    int                 sockfd;
-    struct sockaddr_in  client_addr;      
-};
-
+void
+handle_error(char *msg) {
+    perror(msg);
+    exit(EXIT_FAILURE);
+}
 
 void
 *workerThread(void *thread_arg) {
@@ -62,15 +117,15 @@ void
             handle_error_en(new_sock, "new_sock");
         } else {
             // recieve first message
-            read(sockfd, msg, sizeof(msg));
-            getnameinfo((struct sockaddr * ) &client_addr_t, client_len, host, sizeof(host), service, sizeof(service), NI_NUMERICSERV);
-            printf("\nThread %lu recieved connection from %s on port %s.\n", pthread_self(), host, service);
+            recv(sockfd, msg, sizeof(msg), 0);
+            getnameinfo((struct sockaddr * ) &client_addr_t, client_len, host, sizeof(host), service, sizeof(service), 0);
+            printf("\nRecieved connection from %s on port %s.\n", host, service);
 
             strcpy(msg, "Welcome!");
-            len = write(new_sock, msg, sizeof(msg));
+            len = send(new_sock, msg, sizeof(msg), 0);
             if(len < 64) {
                 do {    // resend until all bytes have been sent
-                    len = write(new_sock, msg, sizeof(msg));
+                    len = send(new_sock, msg, sizeof(msg), 0);
                 } while(len < 64);
             }
             memset(msg, 0, sizeof(msg));
@@ -78,26 +133,26 @@ void
 
         do {
             // Kontostand an Client senden
-            printf("Sending current balance of %i € to client %s\n", balance, host);
+            printf("Sending current balance of %i Euro to client %s\n", balance, host);
             // Schreibe aktuellen Kontostand in den Buffer
             sprintf(msg, "%d", balance);
 
             // Sende Kontostand an Client
-            len = write(new_sock, msg, sizeof(msg));
+            len = send(new_sock, msg, sizeof(msg), 0);
 
             // Prüfe ob alle Bytes versendet wurden
             if(len < 64) {
-                printf("Es wurden nur %i von %lu Bytes versandt. Sende erneut.\n", len, sizeof(msg));
+                printf("Sent only %i out %lu Bytes. Trying again.\n", len, sizeof(msg));
                 do {    // Wir senden solange, bis alle Bytes versendet wurden.
-                    len = write(new_sock, msg, sizeof(msg));
+                    len = send(new_sock, msg, sizeof(msg), 0);
                 } while(len < 64);
-            } else printf("Erfolgreich versandt\n");
+            } else printf("Sent successfully\n");
             memset(msg, 0, sizeof(msg));
 
 
             // Operation vom Client lesen
-            len = read(new_sock, msg, sizeof(msg));
-            printf("\nLese %i Bytes\n", len);
+            len = recv(new_sock, msg, sizeof(msg), 0);
+            printf("\nRecieved %i Bytes\n", len);
 
 
             // Kontostand anpassen mit den empfangenen Daten
@@ -143,7 +198,7 @@ void
             printf("Work thread creation failed!\n");
         }
 
-        sleep(1);
+        //sleep(1);
     }
 
 
@@ -170,6 +225,13 @@ main(int argc, char *argv[]) {
         fprintf(stderr, "%s: Invalid Arguments\nUsage: %s [1025 - 65535]\n", argv[0], argv[0]);
         exit(EXIT_FAILURE);
     }
+
+
+    #ifdef __WIN32__
+        WORD versionWanted = MAKEWORD(1, 1);
+        WSADATA wsaData;
+        WSAStartup(versionWanted, &wsaData);
+    #endif
 
 
     // initialize address structs
