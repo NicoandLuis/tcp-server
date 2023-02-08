@@ -28,57 +28,39 @@
 
 int errnum;
 int balance = 0;
-socklen_t socklen = sizeof(struct sockaddr_in);
+socklen_t socklen;
 int sockfd, new_sock;
 // address structs
-struct sockaddr_in addr, client_addr;
+struct sockaddr_in6 addr, client_addr;
 
 struct thread_info {    /* Used as argument to thread_start() */
     int                 thread_num;       /* Application-defined thread # */
     int                 sockfd;
-    struct sockaddr_in  client_addr;
+    struct sockaddr_in6  client_addr;
 };
-
 
 pthread_t tid[10], dispatch;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 
-// int sockInit(void)
-// {
-//     #ifdef _WIN32
-//         WSADATA wsa_data;
-//         return WSAStartup(MAKEWORD(2,2), &wsa_data);
-//     #else
-//         return 0;
-//     #endif
-// }
+ int sockInit(void)
+ {
+     #ifdef _WIN32
+         WSADATA wsa_data;
+         return WSAStartup(MAKEWORD(2,2), &wsa_data);
+     #else
+         return 0;
+     #endif
+ }
 
-// int sockQuit(void)
-// {
-//     #ifdef _WIN32
-//         return WSACleanup();
-//     #else
-//         return 0;
-//     #endif
-// }
-
-
-// int
-// sockClose(SOCKET sock) {
-
-//     int status = 0;
-
-//     #ifdef _WIN32
-//         status = shutdown(sock, SD_BOTH);
-//         if (status == 0) { status = closesocket(sock); }
-//     #else
-//         status = shutdown(sock, SHUT_RDWR);
-//         if (status == 0) { status = close(sock); }
-//     #endif
-
-//     return status;
-// }
+ int sockQuit(void)
+ {
+     #ifdef _WIN32
+         return WSACleanup();
+     #else
+         return 0;
+     #endif
+ }
 
 
 void
@@ -118,7 +100,7 @@ void
     long len;
     pthread_mutex_lock(&lock);
     struct thread_info *t_info = thread_arg;
-    struct sockaddr_in client_addr_t = t_info->client_addr;
+    struct sockaddr_in6 client_addr_t = t_info->client_addr;
     int t_sock = t_info->sockfd;
     pthread_mutex_unlock(&lock);
 
@@ -126,7 +108,7 @@ void
     memset(&msg, 0, sizeof(msg));
 
     char host[NI_MAXHOST], service[NI_MAXSERV];
-    socklen_t client_len = sizeof(struct sockaddr);
+    socklen_t client_len = sizeof(client_addr_t);
 
 
 
@@ -244,62 +226,58 @@ main(int argc, char *argv[]) {
     }
 
 
-    #ifdef __WIN32__
-        WORD versionWanted = MAKEWORD(1, 1);
-        WSADATA wsaData;
-        WSAStartup(versionWanted, &wsaData);
-    #endif
+    // initialize WSA for windows
+    sockInit();
 
 
     // initialize address structs
-    memset(&addr, 0, sizeof(struct sockaddr_in));
-    memset(&client_addr, 0, sizeof(struct sockaddr_in));
+    memset(&addr, 0, sizeof(struct sockaddr_in6));
+    memset(&client_addr, 0, sizeof(struct sockaddr_in6));
 
 
     // create the socket for the server
     printf("Initializing socket...\n");
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if(sockfd < 0) {
-        perror("Couldn't create socket: ");
-        exit(EXIT_FAILURE);
-    }
+    sockfd = socket(AF_INET6, SOCK_STREAM, 0);
+    if(sockfd < 0)
+        handle_error("Couldn't create socket: ");
+    // enable IPv4 addresses via IPv6
+    setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, &(int){0}, sizeof(int) < 0);
 
     // set the IP address and get the service from args
     printf("Initializing address...\n");
-    addr.sin_family = AF_INET;  // currently only IPV4 support
-    addr.sin_port = htons((unsigned short) strtol(argv[1], NULL, 0));
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin6_family = AF_INET6;  // currently only IPV4 support
+    addr.sin6_port = htons((unsigned short) strtol(argv[1], NULL, 0));
+    addr.sin6_addr = in6addr_any;
 
 
     // bind the socket
-    printf("binding socket...\n");
-    errnum = bind(sockfd, (struct sockaddr *) &addr, sizeof(struct sockaddr_in));
-    if(errnum < 0) {
-        fprintf(stderr, "IP-Adresse konnte nicht angebunden werden: %s\n", strerror(errnum));
-        exit(EXIT_FAILURE);
-    }
+    printf("Binding socket...\n");
+    errnum = bind(sockfd, (struct sockaddr *) &addr, sizeof(addr));
+    if(errnum < 0)
+        handle_error_en(errnum, "Couldn't bind the address");
 
 
     // Holen uns die uns zugewiesene Adresse ab und geben den Port aus
     errnum = getsockname(sockfd, (struct sockaddr *) &addr, &socklen);
-    if(errnum < 0) {
-        fprintf(stderr, "Problem bei getsock(): %s\n", strerror(errnum));
-        exit(EXIT_FAILURE);
-    }
-    printf("\nSuccess!\nThe server is running on port %hu\n", ntohs(addr.sin_port));
+    if(errnum < 0)
+        handle_error_en(errnum, "getsockname failed: ");
+    printf("\nSuccess!\nThe server is running on port %hu\n", ntohs(addr.sin6_port));
 
 
     // set socket into passive listen state
     errnum = listen(sockfd, 5);
-    if(errnum < 0) {
-        fprintf(stderr, "Problem bei listen(): %s\n", strerror(errnum));
-        exit(EXIT_FAILURE);
-    }
+    if(errnum < 0)
+        handle_error_en(errnum, "Error with listen: ");
 
     // create dispatch thread which handles incoming connections
     pthread_create(&dispatch, NULL, dispatcherThread, NULL);
     // main program is done, wait for dispatcher
     pthread_join(dispatch, NULL);
+
+    // shutdown WSA for windows
+    sockQuit();
+
+    close(sockfd);
 
     return 0;
 }
