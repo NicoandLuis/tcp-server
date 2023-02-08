@@ -6,13 +6,14 @@ OBJECTS=$(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(wildcard $(SRC_DIR)/*.c))\
 HEADERS=$(shell find $(SRC_DIR) -name "*.h")
 
 # Compiler settings
-CC=cc
+CC=clang
 CFLAGS=-g -Wall -fsanitize=address
 LDFLAGS=-lpthread -g -Wall -fsanitize=address
 
 SRC_DIR=src
 OBJ_DIR=obj
 BIN_DIR=bin
+LIB_DIR=lib
 
 .PHONY: build clean clean-build
 build: $(BIN_DIR)/$(BINARY_NAME)
@@ -28,6 +29,9 @@ $(BIN_DIR)/$(BINARY_NAME): $(OBJECTS) | $(BIN_DIR)
 	$(CC) $(LDFLAGS) -o $@ $+
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c $(HEADERS) | $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJ_DIR)/%.o: $(LIB_DIR)/%.c $(HEADERS) | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.S | $(OBJ_DIR)
