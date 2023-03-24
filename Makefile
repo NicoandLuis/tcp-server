@@ -13,7 +13,7 @@ LDFLAGS=-lpthread -g -Wall -fsanitize=address
 SRC_DIR=src
 OBJ_DIR=obj
 BIN_DIR=bin
-LIB_DIR=lib
+LIB_DIR=include
 
 .PHONY: build clean clean-build
 all: $(BIN_DIR)/$(BINARY_NAME)
